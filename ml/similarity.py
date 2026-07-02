@@ -1,4 +1,6 @@
 from sentence_transformers import SentenceTransformer, util
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # -----------------------------
 # Load model once at import time
@@ -17,10 +19,6 @@ def compare_skills(resume_skills, jd_skills):
     """
     Compare resume skills with job description skills using
     semantic similarity instead of exact string matching.
-
-    Example: "Deep Learning" in resume will now match
-    "Neural Networks" in JD if they're semantically close,
-    even though the words are completely different.
 
     Returns the SAME shape as before:
     { "matched", "missing", "extra", "match_percentage" }
@@ -42,15 +40,9 @@ def compare_skills(resume_skills, jd_skills):
             "match_percentage": 0
         }
 
-    # -----------------------------
-    # Encode both skill lists into embeddings
-    # -----------------------------
     resume_embeddings = model.encode(resume_skills, convert_to_tensor=True)
     jd_embeddings = model.encode(jd_skills, convert_to_tensor=True)
 
-    # -----------------------------
-    # Cosine similarity matrix: each JD skill vs each resume skill
-    # -----------------------------
     similarity_matrix = util.cos_sim(jd_embeddings, resume_embeddings)
 
     matched = []
@@ -58,7 +50,6 @@ def compare_skills(resume_skills, jd_skills):
     used_resume_skills = set()
 
     for i, jd_skill in enumerate(jd_skills):
-        # Find the resume skill most similar to this JD skill
         best_score, best_index = similarity_matrix[i].max(dim=0)
         best_score = best_score.item()
         best_index = best_index.item()
@@ -86,3 +77,38 @@ def compare_skills(resume_skills, jd_skills):
         "extra": extra,
         "match_percentage": match_percentage
     }
+
+
+def calculate_document_similarity(resume_text, jd_text):
+    """
+    Compares the FULL resume text against the FULL job description
+    text as two documents, using TF-IDF vectors + cosine similarity.
+
+    This is different from compare_skills() above:
+    - compare_skills looks at individual skill words/phrases
+    - this looks at the overall writing/content relevance of the
+      whole resume against the whole JD (wording, phrasing, context)
+
+    Returns: similarity percentage (0-100)
+    """
+
+    if not resume_text or not jd_text:
+        return 0
+
+    vectorizer = TfidfVectorizer(stop_words="english")
+
+    try:
+        tfidf_matrix = vectorizer.fit_transform([resume_text, jd_text])
+    except ValueError:
+        # Happens if text is empty after removing stop words
+        return 0
+
+    similarity_score = cosine_similarity(
+        tfidf_matrix[0:1],
+        tfidf_matrix[1:2]
+    )[0][0]
+
+    # Convert numpy float64 -> plain Python float.
+    # Without this, the value can't be saved to PostgreSQL
+    # ("schema np does not exist" error).
+    return round(float(similarity_score) * 100, 2)

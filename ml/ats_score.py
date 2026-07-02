@@ -1,3 +1,6 @@
+from ml.similarity import calculate_document_similarity
+
+
 def calculate_ats_score(
     comparison,
     resume_text,
@@ -97,12 +100,20 @@ def calculate_ats_score(
     score += resume_quality
 
     # ------------------------
-    # Keyword Density (5 Marks)
+    # Content Relevance (5 Marks)
+    # Upgraded from simple "Keyword Density" check to a real
+    # TF-IDF cosine similarity between the full resume and JD text.
     # ------------------------
-    keyword_density = 5 if comparison["match_percentage"] > 70 else 2
+    document_similarity = calculate_document_similarity(
+        resume_text,
+        jd_text
+    )
 
-    breakdown["Keyword Density"] = keyword_density
+    # Scale the 0-100 similarity down to a 0-5 point contribution
+    content_relevance_score = round((document_similarity / 100) * 5, 2)
 
-    score += keyword_density
+    breakdown["Content Relevance"] = content_relevance_score
 
-    return round(score, 2), breakdown
+    score += content_relevance_score
+
+    return round(float(score), 2), breakdown
